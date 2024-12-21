@@ -1,54 +1,69 @@
 import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
-import dotenv from "dotenv";
-
-// Load environment variables from .env file
+import dotenv from 'dotenv';
 dotenv.config();
+
 
 const app = express();
 const port = 3000;
 
-// Define the pg pool (recommended for better performance)
-const pool = new pg.Pool({
+
+// defining the pg admin
+const db = new pg.Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT || 5432, // Default to 5432 if DB_PORT is not defined
+  port: process.env.DB_PORT || 5432,
 });
 
+db.connect();
+
+// let quiz = [
+//   { country: "France", capital: "Paris" },
+//   { country: "United Kingdom", capital: "London" },
+//   { country: "United States of America", capital: "New York" },
+// ];
+//sql query to read the data file
 let quiz = [];
+db.query("SELECT * FROM capitals", (err, res) => {
+  if (err) {
+    console.error("Error executing query", err.stack);
+  } else {
+    //it will return all the rews of the table from the
+    quiz = res.rows;
+  }
+  db.end();
+});
+
 let totalCorrect = 0;
-let currentQuestion = {};
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// Get home page
+let currentQuestion = {};
+
+// GET home page
 app.get("/", async (req, res) => {
   totalCorrect = 0;
   await nextQuestion();
-  console.log(currentQuestion); // Debug log
-  if (!currentQuestion.country) {
-    return res.status(500).send("Error: Could not fetch quiz data.");
-  }
+  console.log(currentQuestion);
   res.render("index.ejs", { question: currentQuestion });
 });
 
-// Post submit answer
-app.post("/submit", async (req, res) => {
+// POST a new post
+app.post("/submit", (req, res) => {
   let answer = req.body.answer.trim();
   let isCorrect = false;
-
   if (currentQuestion.capital.toLowerCase() === answer.toLowerCase()) {
     totalCorrect++;
     console.log(totalCorrect);
     isCorrect = true;
   }
 
-  await nextQuestion();
+  nextQuestion();
   res.render("index.ejs", {
     question: currentQuestion,
     wasCorrect: isCorrect,
@@ -56,29 +71,10 @@ app.post("/submit", async (req, res) => {
   });
 });
 
-// Fetch a random question
 async function nextQuestion() {
-  if (quiz.length === 0) {
-    await loadQuizData(); // Ensure quiz data is loaded before selecting a question
-  }
+  const randomCountry = quiz[Math.floor(Math.random() * quiz.length)];
 
-  if (quiz.length > 0) {
-    const randomCountry = quiz[Math.floor(Math.random() * quiz.length)];
-    currentQuestion = randomCountry;
-  } else {
-    console.error("Quiz data is empty.");
-  }
-}
-
-// Load quiz data from the database once at the start
-async function loadQuizData() {
-  try {
-    const res = await pool.query("SELECT * FROM capitals");
-    quiz = res.rows;
-    console.log("Quiz data loaded:", quiz.length, "questions available");
-  } catch (err) {
-    console.error("Error loading quiz data:", err.stack);
-  }
+  currentQuestion = randomCountry;
 }
 
 app.listen(port, () => {
